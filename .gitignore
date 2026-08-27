@@ -1,0 +1,12 @@
+# local artifacts / not part of the tool
+.env
+sessions/
+dkhp_tool/sessions/
+research/
+data/
+ref repo/
+.agents/
+.claude/
+__pycache__/
+*.log
+skills-lock.json

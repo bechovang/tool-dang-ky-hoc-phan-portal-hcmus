@@ -1,0 +1,73 @@
+# HCMUS DKHP Tool
+
+Tool đăng ký học phần tự động cho hệ `new-portalX.hcmus.edu.vn` (HCMUS).
+
+Đã test trực tiếp trên hệ thật (27/08/2026): vượt captcha 6 số, hủy đăng ký,
+đăng ký lại — tất cả bằng HTTP thuần, không cần mở browser khi chạy.
+
+## Cách hệ thống hoạt động (đã reverse-engineer)
+
+```
+Login.aspx ──(reCAPTCHA v2, server validate thật)──> cookie .ASPXAUTH
+     │                                      ⚠ cookie KHÔNG dùng chéo mirror:
+     │                                      login portal nào thì bám portal đó
+     ▼
+DangKyHocPhan.aspx ── cổng captcha 6 số (Handlers/Captcha.ashx)
+     │                mỗi lần vào lại phải vượt lại (OCR tự giải ~100ms)
+     ▼
+Bảng môn: tbDSDaDK (đã ĐK) / tbDSLopMo... (mở)
+     │   tick cbDK + nút btnDangKy (postback ASP.NET, kèm __VIEWSTATE)
+     ▼
+Kết quả trong div "divMsg" (text "thành công")
+```
+
+- Captcha 6 số: **toàn chữ số**, trộn chữ to + chữ nhỏ kiểu superscript trên nền
+  nhiễu → tool tách từng ký tự bằng connected-component (OpenCV) rồi OCR từng
+  ký tự (ddddocr). Sai thì server cho ảnh mới → tự retry.
+- reCAPTCHA login: giải qua **2captcha** (~$3/1000 lần). Không có key thì dùng
+  `python run.py cookie` (paste cookie từ browser — free).
+
+## Cài đặt
+
+```bash
+pip install httpx beautifulsoup4 ddddocr opencv-python-headless python-dotenv numpy pillow
+cp .env.example .env    # rồi điền mật khẩu + API key
+```
+
+## Lệnh
+
+| Lệnh | Chức năng |
+|---|---|
+| `python run.py mirrors` | Ping 20 mirror, xếp theo tốc độ |
+| `python run.py login` | Login tự động (2captcha) + lưu cookie |
+| `python run.py cookie` | Paste cookie từ browser (không tốn tiền) |
+| `python run.py status` | Xem môn đã ĐK + môn đang mở |
+| `python run.py register` | **Đăng ký HẾT mọi môn đang mở** |
+| `python run.py register --codes MST10019,MST10020` | Chỉ đăng ký các môn này |
+| `python run.py register --dry-run` | Xem nó sẽ tick gì, không submit |
+| `python run.py cancel --codes MST10019` | Hủy đăng ký |
+| `python run.py race` | Chờ đến khi có môn mở → tự đăng ký NGAY |
+| `python run.py race --codes MST10019` | Race chỉ với danh sách ưu tiên |
+
+Thêm `--mirror N` (1..20) cho mọi lệnh để chỉ định mirror; mặc định tự chọn
+mirror nhanh nhất.
+
+## Kịch bản ngày đăng ký (khuyến nghị)
+
+1. **Trước giờ mở** (~10 phút): `python run.py login` trên 1-2 mirror nhanh
+   (cookie mirror nào chỉ dùng được mirror đó — chạy thêm `login --mirror M`
+   lần thứ 2 với mirror khác để có phương án dự phòng).
+2. **Đúng giờ**: `python run.py race` — nó tự refresh, vượt captcha, và submit
+   ngay khi danh sách môn xuất hiện. Mirror chết → tự switch + re-login.
+3. Xem kết quả: `python run.py status`.
+
+## Lưu ý quan trọng
+
+- **Không commit** `.env` và `sessions/` (đã có trong `.gitignore`) — bên trong
+  là mật khẩu và cookie đăng nhập.
+- Mật khẩu đã từng dán vào chat/terminal → nên **đổi mật khẩu** sau khi xong.
+- Chạy quá dồn dập (nhiều thread đánh 20 mirror cùng lúc) vừa dễ bị chặn vừa
+  làm hệ thống nặng thêm cho mọi người — tool cố ý chạy 1 mirror chính, thăm dò
+  khoảng ~1 giây/lần.
+- Đăng ký "hết mọi môn" có thể vướng trần tín chỉ / trùng lịch → server sẽ báo
+  trong thông điệp; những môn thừa phải tự `cancel` sau.
