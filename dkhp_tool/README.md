@@ -92,6 +92,37 @@ có thể hủy sớm (đăng xuất, khởi động lại). Nói cách khác: *
 - Chết mấy cái thì chạy lại `python run.py login --all` — nó chỉ login lại đúng
   mấy cái chết, không tốn tiền cho cái còn sống.
 
+## `race` chạy như thế nào? Có sợ bị ban không?
+
+Cơ chế (code: `cmd_race` trong `run.py`):
+
+1. Khởi động: dò 20 mirror **1 lần duy nhất** → chọn mirror nhanh nhất còn
+   cookie sống.
+2. Vòng lặp canh: mở trang DKHP xem môn mục tiêu xuất hiện chưa — chưa thì ngủ
+   ~1 giây (`POLL_INTERVAL` + ngẫu nhiên 0–0.4s cho đỡ đều đặn như máy) rồi xem
+   lại; môn vừa ló là submit **NGAY** trong vài chục milisecond.
+3. Mirror đang dùng sự cố (sập / văng cookie): ngủ 2 giây → chuyển sang mirror
+   dự phòng có cookie sống (kho cookie do `login --all` tạo), không dò lại từ đầu.
+
+Nhịp request — so sánh để yên tâm:
+
+| Hoạt động | Tần suất |
+|---|---|
+| `race` đang canh | **~1 request/giây, trên 1 mirror duy nhất** |
+| Sinh viên bấm F5 thủ công hồi hộp | 3–5 lần/giây là bình thường |
+| `login --all` | tuần tự từng mirror, nghỉ 1 giây giữa các cái |
+
+Tức là `race` chạy **ngang một người ngồi F5**, nhẹ hơn kiểu spam thật — ngày mở
+đăng ký server chịu hàng nghìn sinh viên cùng lúc. Tool cũng cố ý: không dập
+nhiều mirror song song, luôn sleep giữa các lượt, cộng jitter ngẫu nhiên.
+
+Ba cách **tự làm mình bị chú ý** — tránh:
+
+1. Mở nhiều cửa sổ `race` cùng lúc.
+2. Tụt `POLL_INTERVAL` xuống dưới 0.8 (mặc định 1.0 là đẹp).
+3. Chạy `login --all --force` đi đi lại lại nhiều lần trong vài phút (tốn tiền
+   vô ích + tạo 20 lượt login dồn dập).
+
 ## Kịch bản ngày đăng ký (khuyến nghị)
 
 1. **Trước giờ mở** (~10-15 phút):
