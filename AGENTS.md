@@ -87,6 +87,7 @@ thường bằng login-manual hoặc cookie dán tay.
 | "kiểm tra phiên đăng nhập" | `python run.py sessions` | "xem còn giữ thẻ vào cửa của mấy cổng" (rút từ sessions/*.json hoặc .env) |
 | "tôi có cookie, thêm vào giùm" | ghi `PORTAL{N}_ASPXAUTH=...` vào `.env` rồi chạy `python run.py sessions` | "dán thẻ vào cửa của cổng N vào file cấu hình, kiểm tra ngay xem còn dùng được không" |
 | "xem môn" | `python run.py status` | "liệt kê môn đã đăng + môn đang mở" |
+| "mở trang lên cho tôi tự bấm" | `python run.py open` | tool dò 20 cổng + dùng cookie sẵn (hết thì tự login lại), mở cửa sổ Chromium tại trang ĐKHP với ô gõ mã 6 số — **người dùng tự gõ mã, tự tick môn, tự bấm**; đóng cửa sổ khi xong là cookie tự lưu |
 | "đăng ký hết" | `python run.py register` | ⚠️ hành động thật — đọc danh sách + chờ "đồng ý" |
 | "đăng ký mấy môn X,Y" | `python run.py register --codes X,Y` | như trên nhưng chọn lọc |
 | "hủy môn X" | `python run.py cancel --codes X` | ⚠️ hành động thật — xác nhận trước |

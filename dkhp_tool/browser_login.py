@@ -34,6 +34,56 @@ def session_alive(mirror: int) -> bool:
     return cookiestore.alive(mirror)
 
 
+def open_dkhp(mirror: int, log=print):
+    """Mở trang ĐKHP của mirror trong Chromium (cookie gắn sẵn) — bạn tự gõ
+    mã 6 số, tự tick môn và bấm đăng ký. Cửa sổ đang mở thì tool liên tục lưu
+    lại cookie mới (phòng khi bạn phải login lại ngay trong cửa sổ)."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        raise SystemExit(
+            "Cần cài Playwright trước:\n"
+            "  pip install playwright\n"
+            "  playwright install chromium"
+        )
+    cookies = cookiestore.load(mirror)
+    if not cookies or not cookies.get(".ASPXAUTH"):
+        raise SystemExit(f"chưa có cookie cho new-portal{mirror} — chạy trước: "
+                         f"python run.py login --mirror {mirror}")
+    base = f"https://new-portal{mirror}.hcmus.edu.vn"
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=False)
+        ctx = browser.new_context()
+        ctx.add_cookies([{"name": k, "value": v, "domain": base[8:], "path": "/"}
+                         for k, v in cookies.items()])
+        page = ctx.new_page()
+        try:
+            page.goto(base + "/DangKyHocPhan.aspx", timeout=30000)
+        except Exception as e:  # noqa: BLE001
+            log(f"[portal{mirror}] trang tải chậm ({type(e).__name__}) — tự F5 trong cửa sổ nhé")
+        log(f"[portal{mirror}] cửa sổ đã mở — bạn gõ mã 6 số và tự thao tác, "
+            f"đóng cửa sổ khi xong (cookie tự lưu lại).")
+        last = ""
+        try:
+            while browser.is_connected():
+                try:
+                    cur = {c["name"]: c["value"] for c in ctx.cookies(base)}
+                    if cur.get(".ASPXAUTH") and cur != last:
+                        cookiestore.save(mirror, cur)
+                        last = cur
+                    page.wait_for_timeout(2000)
+                except Exception:  # noqa: BLE001 — cửa sổ vừa bị đóng giữa chừng
+                    break
+        except KeyboardInterrupt:
+            log("\nđóng theo Ctrl+C")
+        finally:
+            try:
+                browser.close()
+            except Exception:  # noqa: BLE001
+                pass
+    log(f"[portal{mirror}] cửa sổ đã đóng — cookie mới nhất đã lưu.")
+
+
 def login_manual(mirrors: list[int], username: str, password: str,
                  force: bool = False, log=print):
     try:

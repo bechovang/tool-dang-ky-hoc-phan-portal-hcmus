@@ -11,6 +11,8 @@ Commands:
                                        (hoặc dán thẳng vào .env: PORTAL{N}_ASPXAUTH)
   python run.py sessions                trạng thái cookie đã lưu (sống/chết)
   python run.py status [--mirror N]     show registered + open classes
+  python run.py open [--mirror N]       mở sẵn trang ĐKHP trên mirror nhanh nhất
+                                       có cookie sống — bạn tự gõ mã 6 số, tự bấm
   python run.py register [--codes A,B] [--dry-run]   register ALL open classes (or subset)
   python run.py cancel --codes A,B      cancel registrations
   python run.py race [--codes A,B]      loop until classes open, register instantly
@@ -232,6 +234,38 @@ def cmd_cookie(a):
     save_session(s)
 
 
+def _ensure_mirror_cookie(m: int):
+    """Bảo đảm mirror m có cookie sống: thiếu/thế thì login lại (tự động nếu có
+    key dịch vụ, không thì mở browser login tay)."""
+    if cookiestore.alive(m):
+        return
+    log(f"cookie new-portal{m} chưa có hoặc đã chết — cần login lại...")
+    if USERNAME and PASSWORD and captchasvc.active()[0]:
+        s = PortalSession(m, log=log)
+        s.login(USERNAME, PASSWORD)
+        save_session(s)
+    else:
+        import browser_login
+        browser_login.login_manual([m], USERNAME, PASSWORD, log=log)
+
+
+def cmd_open(a):
+    """Mở trang ĐKHP trong browser để tự thao tác tay — tool chỉ lo chọn mirror
+    nhanh nhất có cookie sống."""
+    import browser_login
+    if a.mirror:
+        _ensure_mirror_cookie(a.mirror)
+        m = a.mirror
+    else:
+        log("dò 20 mirror...")
+        ups = P.check_mirrors(range(1, 21))
+        if not ups:
+            raise SystemExit("no mirror responded — try again in a moment")
+        m = next((i for i, _ in ups if cookiestore.alive(i)), ups[0][0])
+        _ensure_mirror_cookie(m)
+    browser_login.open_dkhp(m, log=log)
+
+
 def cmd_status(a):
     s = load_session(a.mirror)
     html = ensure_ready(s)
@@ -341,6 +375,7 @@ def main():
                     help="(kèm --all) làm lại kể cả mirror đã có cookie còn sống")
     with_mirror(sub.add_parser("cookie"))
     with_mirror(sub.add_parser("status"))
+    with_mirror(sub.add_parser("open"))
 
     sp = with_mirror(sub.add_parser("login-manual"))
     sp.add_argument("--mirrors", default="", help="vd: 4,11 hoặc 1-20; rỗng = tất cả 1..20")
@@ -360,7 +395,7 @@ def main():
 
     args = p.parse_args()
     dict(mirrors=cmd_mirrors, login=cmd_login, cookie=cmd_cookie, status=cmd_status,
-         login_manual=cmd_login_manual, sessions=cmd_sessions,
+         open=cmd_open, login_manual=cmd_login_manual, sessions=cmd_sessions,
          register=cmd_register, cancel=cmd_cancel, race=cmd_race)[args.cmd](args)
 
 
