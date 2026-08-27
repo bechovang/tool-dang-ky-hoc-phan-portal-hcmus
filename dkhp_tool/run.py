@@ -2,7 +2,7 @@
 
 Commands:
   python run.py mirrors                 check which of the 20 mirrors are up
-  python run.py login [--mirror N]      auto-login via 2captcha, save cookies
+  python run.py login [--mirror N]      auto-login (anticaptcha.top / 2captcha), save cookies
   python run.py login-manual            login tay qua browser cho mọi mirror
                                        [--mirrors 4,11|1-20] [--force]
   python run.py cookie [--mirror N]     paste cookies from your browser instead
@@ -30,7 +30,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 import httpx
 from dotenv import load_dotenv
 
+import captchasvc
 import cookiestore
+import solver_anticaptcha
 import portal as P
 from portal import PortalSession
 
@@ -39,7 +41,6 @@ load_dotenv(ROOT / ".env")
 
 USERNAME = os.getenv("USERNAME_SV", "")
 PASSWORD = os.getenv("PASSWORD_SV", "")
-API_KEY = os.getenv("TWOCAPTCHA_API_KEY", "")
 MIRROR = int(os.getenv("MIRROR", "0") or 0)  # 0 = auto (fastest alive)
 POLL = float(os.getenv("POLL_INTERVAL", "1.0"))
 
@@ -65,15 +66,15 @@ def save_session(s: PortalSession):
 
 
 def ensure_ready(s: PortalSession) -> str:
-    """Pass the captcha gate; auto re-login through 2captcha if auth expired."""
+    """Pass the captcha gate; auto re-login qua dịch vụ giải captcha nếu mất auth."""
     try:
-        return s.pass_gate(api_key=API_KEY or None)
+        return s.pass_gate()
     except P.LoginFailed:
-        if USERNAME and PASSWORD and API_KEY:
-            log("auth lost — re-login via 2captcha...")
-            s.login(USERNAME, PASSWORD, API_KEY)
+        if USERNAME and PASSWORD and captchasvc.active()[0]:
+            log(f"auth lost — login lại qua {captchasvc.active()[0]}...")
+            s.login(USERNAME, PASSWORD)
             save_session(s)
-            return s.pass_gate(api_key=API_KEY)
+            return s.pass_gate()
         raise
 
 
@@ -142,16 +143,20 @@ def cmd_sessions(_a):
 
 def cmd_login(a):
     m = a.mirror or pick_mirror()
-    if not API_KEY:
-        log("chưa có TWOCAPTCHA_API_KEY trong .env — mở browser cho bạn login tay (miễn phí)...")
-        log("(muốn tự động 100% thì nạp key 2captcha; muốn login nhiều mirror cùng lúc: python run.py login-manual)")
+    svc, key = captchasvc.active()
+    if not svc:
+        log("chưa có key giải captcha trong .env — mở browser cho bạn login tay (miễn phí)...")
+        log("(muốn tự động 100%: điền ANTICAPTCHA_API_KEY của anticaptcha.top — VN, ~33đ/lần — "
+            "hoặc TWOCAPTCHA_API_KEY; login nhiều mirror cùng lúc: python run.py login-manual)")
         import browser_login
         browser_login.login_manual([m], USERNAME, PASSWORD, log=log)
         return
+    if svc == "anticaptcha.top":
+        log(f"số dư anticaptcha.top: {solver_anticaptcha.get_balance(key)}đ")
     if not (USERNAME and PASSWORD):
         raise SystemExit("Set USERNAME_SV / PASSWORD_SV in .env first.")
     s = PortalSession(m, log=log)
-    s.login(USERNAME, PASSWORD, API_KEY)
+    s.login(USERNAME, PASSWORD)
     save_session(s)
 
 
@@ -246,12 +251,12 @@ def cmd_race(a):
             s = next_alive_session(exclude={s.mirror})
             if s:
                 continue
-            if USERNAME and PASSWORD and API_KEY:
+            if USERNAME and PASSWORD and captchasvc.active()[0]:
                 try:
-                    log("không có cookie dự phòng — login lại qua 2captcha...")
+                    log(f"không có cookie dự phòng — login lại qua {captchasvc.active()[0]}...")
                     m = pick_mirror()
                     s = PortalSession(m, log=log)
-                    s.login(USERNAME, PASSWORD, API_KEY)
+                    s.login(USERNAME, PASSWORD)
                     save_session(s)
                     continue
                 except Exception as e2:  # noqa: BLE001

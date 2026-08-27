@@ -1,8 +1,9 @@
 """HCMUS new-portal course-registration client (ASP.NET WebForms).
 
-Handles: login (reCAPTCHA v2 via 2captcha), the 6-digit captcha gate on
-DangKyHocPhan.aspx (local segmentation OCR, 2captcha fallback), parsing the
-registered/open-class tables, and the register/cancel postbacks.
+Handles: login (reCAPTCHA v2 qua captchasvc — anticaptcha.top hoặc 2captcha),
+the 6-digit captcha gate on DangKyHocPhan.aspx (local segmentation OCR,
+service fallback), parsing the registered/open-class tables, and the
+register/cancel postbacks.
 
 Reverse-engineered from new-portal4.hcmus.edu.vn, verified live 2026-08-27.
 """
@@ -13,8 +14,8 @@ import time
 
 import httpx
 
+import captchasvc
 from captcha_solver import solve as solve_captcha_ocr
-import solver_2captcha
 
 
 class GateFailed(Exception):
@@ -77,22 +78,27 @@ class PortalSession:
         return {c.name: c.value for c in self.client.cookies.jar}
 
     # ----------------------------------------------------------------- login
-    def login(self, username: str, password: str, api_key: str | None = None):
-        """Login via reCAPTCHA v2. Needs a 2captcha API key."""
+    def login(self, username: str, password: str):
+        """Login qua reCAPTCHA v2. Cần key dịch vụ giải captcha trong .env
+        (ANTICAPTCHA_API_KEY hoặc TWOCAPTCHA_API_KEY — xem captchasvc.py)."""
+        name, _key = captchasvc.active()
+        if not name:
+            raise LoginFailed(
+                "Cần key giải reCAPTCHA trong .env: ANTICAPTCHA_API_KEY (anticaptcha.top, "
+                "VN, ~33đ/lần) hoặc TWOCAPTCHA_API_KEY — hoặc dùng `run.py login-manual` "
+                "để login tay qua browser (miễn phí)."
+            )
         r = self._get("/Login.aspx")
         html = r.text
         m = re.search(r'data-sitekey="([^"]+)"', html)
         if not m:
             raise LoginFailed("reCAPTCHA sitekey not found on login page")
         sitekey = m.group(1)
-        if not api_key:
-            raise LoginFailed(
-                "Login requires solving reCAPTCHA v2. Put TWOCAPTCHA_API_KEY in .env "
-                "(~$3/1000 solves) — or use `run.py cookie` to paste browser cookies instead."
-            )
-        self.log(f"[login] solving reCAPTCHA v2 via 2captcha (sitekey {sitekey[:12]}...)...")
-        token = solver_2captcha.solve_recaptcha_v2(api_key, sitekey, self.base + "/Login.aspx",
-                                                   log=lambda m: self.log(f"[2captcha] {m}"))
+        self.log(f"[login] giải reCAPTCHA v2 qua {name} (sitekey {sitekey[:12]}...)...")
+        token = captchasvc.solve_recaptcha_v2(sitekey, self.base + "/Login.aspx",
+                                              log=lambda m: self.log(m))
+        if not token:
+            raise LoginFailed(f"{name} không giải được reCAPTCHA")
         fields = _hidden_fields(html)
         fields.update({
             "ctl00$ContentPlaceHolder1$txtUsername": username,
@@ -107,7 +113,7 @@ class PortalSession:
         self.log(f"[login] OK on new-portal{self.mirror} — cookies captured")
 
     # ------------------------------------------------------------- captcha gate
-    def pass_gate(self, max_tries: int = 12, api_key: str | None = None) -> str:
+    def pass_gate(self, max_tries: int = 12) -> str:
         """Ensure we are past the 6-digit captcha gate; return the course page HTML."""
         for i in range(1, max_tries + 1):
             r = self._get("/DangKyHocPhan.aspx")
@@ -118,12 +124,11 @@ class PortalSession:
 
             img = self.client.get(self.base + "/Handlers/Captcha.ashx").content
             code = solve_captcha_ocr(img)
-            if not code and api_key:
+            if not code and captchasvc.active()[0]:
                 try:
-                    code = solver_2captcha.solve_image_captcha(
-                        api_key, img, log=lambda m: self.log(f"[2captcha] {m}"))
+                    code = captchasvc.solve_image_captcha(img, log=lambda m: self.log(m))
                 except Exception as e:  # noqa: BLE001
-                    self.log(f"[gate {i}] 2captcha image fallback failed: {e}")
+                    self.log(f"[gate {i}] image-captcha fallback failed: {e}")
             if not code:
                 self.log(f"[gate {i}] local OCR no candidate, refetch")
                 continue

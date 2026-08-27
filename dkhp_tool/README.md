@@ -24,9 +24,11 @@ Kết quả trong div "divMsg" (text "thành công")
 - Captcha 6 số: **toàn chữ số**, trộn chữ to + chữ nhỏ kiểu superscript trên nền
   nhiễu → tool tách từng ký tự bằng connected-component (OpenCV) rồi OCR từng
   ký tự (ddddocr). Sai thì server cho ảnh mới → tự retry.
-- reCAPTCHA login: giải qua **2captcha** (~$3/1000 lần). Không có key thì dùng
-  `login-manual` (tool mở browser, bạn tick reCAPTCHA) hoặc dán cookie vào `.env`
-  (xem "Dán cookie tay vào .env" bên dưới) — free.
+- reCAPTCHA login: giải qua dịch vụ bên ngoài — ưu tiên **anticaptcha.top**
+  (Việt Nam, ~33đ/lần, thanh toán nội địa; đã test live 27/08/2026: giải xong
+  trong ~37s, login thành công), dự phòng **2captcha** (~$3/1000 lần). Không có
+  key thì dùng `login-manual` (tool mở browser, bạn tick reCAPTCHA) hoặc dán
+  cookie vào `.env` (xem "Dán cookie tay vào .env" bên dưới) — free.
 
 ## Cài đặt
 
@@ -41,7 +43,7 @@ cp .env.example .env    # rồi điền mật khẩu + API key
 | Lệnh | Chức năng |
 |---|---|
 | `python run.py mirrors` | Ping 20 mirror, xếp theo tốc độ |
-| `python run.py login` | Login tự động (2captcha); **thiếu key thì tự mở browser login tay** |
+| `python run.py login` | Login tự động qua anticaptcha.top (VN) hoặc 2captcha — key nào có trong `.env` thì dùng cái đó; **thiếu cả hai thì tự mở browser login tay** |
 | `python run.py login-manual` | **Login tay hàng loạt qua browser**: tool mở Chromium, tự điền tài khoản cho từng mirror chưa có cookie — bạn chỉ tick reCAPTCHA + bấm Đăng nhập, tool tự lưu + verify + chuyển mirror kế. `--mirrors 4,11` hoặc `--force` để làm lại |
 | `python run.py cookie` | Paste cookie từ browser (1 mirror, không cần Playwright) |
 | `python run.py sessions` | Kiểm tra cookie đã lưu mirror nào còn sống (rút từ `sessions/*.json` hoặc `.env`) |
