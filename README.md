@@ -21,8 +21,12 @@ cần mở browser khi chạy, vượt được cả 2 lớp captcha của hệ 
 
 Xem hướng dẫn đầy đủ: [`dkhp_tool/README.md`](dkhp_tool/README.md)
 
+**Không rành kỹ thuật?** Mở Claude Code (hoặc AI agent bất kỳ) trong thư mục này
+và nói "cài giúp tôi" — agent sẽ đọc file [`AGENTS.md`](AGENTS.md) và tự làm theo.
+
 ```bash
-pip install httpx beautifulsoup4 ddddocr opencv-python-headless python-dotenv numpy pillow
+pip install httpx ddddocr opencv-python-headless python-dotenv numpy playwright
+python -m playwright install chromium
 cd dkhp_tool
 copy .env.example .env    # điền tài khoản + API key 2captcha
 python run.py mirrors     # check 20 mirror
