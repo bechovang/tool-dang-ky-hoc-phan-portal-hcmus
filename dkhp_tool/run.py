@@ -6,6 +6,7 @@ Commands:
   python run.py login-manual            login tay qua browser cho mọi mirror
                                        [--mirrors 4,11|1-20] [--force]
   python run.py cookie [--mirror N]     paste cookies from your browser instead
+                                       (hoặc dán thẳng vào .env: PORTAL{N}_ASPXAUTH)
   python run.py sessions                trạng thái cookie đã lưu (sống/chết)
   python run.py status [--mirror N]     show registered + open classes
   python run.py register [--codes A,B] [--dry-run]   register ALL open classes (or subset)
@@ -17,7 +18,6 @@ Config lives in .env next to this file (see .env.example).
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import random
 import sys
@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import httpx
 from dotenv import load_dotenv
 
+import cookiestore
 import portal as P
 from portal import PortalSession
 
@@ -41,7 +42,6 @@ PASSWORD = os.getenv("PASSWORD_SV", "")
 API_KEY = os.getenv("TWOCAPTCHA_API_KEY", "")
 MIRROR = int(os.getenv("MIRROR", "0") or 0)  # 0 = auto (fastest alive)
 POLL = float(os.getenv("POLL_INTERVAL", "1.0"))
-SESSIONS = ROOT / "sessions"
 
 
 def log(msg: str):
@@ -53,17 +53,14 @@ def load_session(mirror: int = 0) -> PortalSession:
     if not m:
         raise SystemExit("No mirror selected. Run `python run.py mirrors`, set MIRROR in .env, "
                          "or pass --mirror N.")
-    cookies = None
-    f = SESSIONS / f"portal{m}.json"
-    if f.exists():
-        cookies = json.loads(f.read_text())
-        log(f"loaded saved cookies for new-portal{m}")
+    cookies = cookiestore.load(m)
+    if cookies:
+        log(f"loaded cookies for new-portal{m} (nguồn: {cookiestore.source(m)})")
     return PortalSession(m, cookies=cookies, log=log)
 
 
 def save_session(s: PortalSession):
-    SESSIONS.mkdir(exist_ok=True)
-    (SESSIONS / f"portal{s.mirror}.json").write_text(json.dumps(s.cookie_dict()))
+    cookiestore.save(s.mirror, s.cookie_dict())
     log(f"cookies saved for new-portal{s.mirror}")
 
 
@@ -101,22 +98,12 @@ def _print_rows(rows, title: str):
 
 def next_alive_session(exclude: set[int]) -> PortalSession | None:
     """Mirror dự phòng có cookie còn sống (đã login trước đó)."""
-    import browser_login
-    if not SESSIONS.exists():
-        return None
-    for f in sorted(SESSIONS.glob("portal*.json")):
-        try:
-            m = int(f.stem.replace("portal", ""))
-        except ValueError:
+    for m in cookiestore.known_mirrors():
+        if m in exclude or not cookiestore.alive(m):
             continue
-        if m in exclude or not browser_login.session_alive(m):
-            continue
-        log(f"chuyển sang mirror dự phòng new-portal{m} (cookie sẵn)")
-        return PortalSession(m, cookies=json.loads(f.read_text()), log=log)
+        log(f"chuyển sang mirror dự phòng new-portal{m} (cookie từ {cookiestore.source(m)})")
+        return PortalSession(m, cookies=cookiestore.load(m), log=log)
     return None
-
-
-# ---------------------------------------------------------------- commands
 
 
 # ---------------------------------------------------------------- commands
@@ -139,16 +126,18 @@ def cmd_login_manual(a):
 
 
 def cmd_sessions(_a):
-    import browser_login
-    if not SESSIONS.exists() or not list(SESSIONS.glob("portal*.json")):
-        log("chưa có cookie nào. Chạy: python run.py login-manual")
+    mirrors = cookiestore.known_mirrors()
+    if not mirrors:
+        log("chưa có cookie nào (sessions/ lẫn .env đều trống).")
+        log("Chạy: python run.py login-manual   (hoặc dán cookie vào .env: PORTAL{N}_ASPXAUTH)")
         return
-    log("kiểm tra cookie đã lưu (gọi 1 request mỗi mirror)...")
-    for f in sorted(SESSIONS.glob("portal*.json"),
-                    key=lambda p: int(p.stem.replace("portal", ""))):
-        m = int(f.stem.replace("portal", ""))
-        alive = browser_login.session_alive(m)
-        log(f"  new-portal{m:2d}: {'SỐNG ✅' if alive else 'CHẾT ❌ (login lại: python run.py login-manual --mirrors %d --force)' % m}")
+    log(f"kiểm tra cookie của {len(mirrors)} mirror (1 request mỗi cái)...")
+    for m in mirrors:
+        if cookiestore.alive(m):
+            log(f"  new-portal{m:2d}: SỐNG ✅  (nguồn: {cookiestore.source(m)})")
+        else:
+            log(f"  new-portal{m:2d}: CHẾT ❌  (nguồn: {cookiestore.source(m)}) "
+                f"— login lại: python run.py login-manual --mirrors {m} --force")
 
 
 def cmd_login(a):

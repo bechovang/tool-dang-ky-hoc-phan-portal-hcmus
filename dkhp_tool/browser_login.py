@@ -6,13 +6,10 @@ cookie .ASPXAUTH xuất hiện, lưu + verify, rồi chuyển mirror kế tiếp
 """
 from __future__ import annotations
 
-import json
 import time
-from pathlib import Path
 
-from portal import PortalSession
+import cookiestore
 
-SESSIONS = Path(__file__).parent / "sessions"
 TIMEOUT_PER_MIRROR = 300  # giây
 
 
@@ -33,16 +30,8 @@ def parse_mirror_list(spec: str) -> list[int]:
 
 
 def session_alive(mirror: int) -> bool:
-    """Cookie đã lưu cho mirror này còn dùng được không? (redirect về Login = chết)."""
-    f = SESSIONS / f"portal{mirror}.json"
-    if not f.exists():
-        return False
-    try:
-        s = PortalSession(mirror, cookies=json.loads(f.read_text()), timeout=15)
-        r = s.client.get(s.base + "/DangKyHocPhan.aspx")
-        return "btnLogin" not in r.text[:4000]
-    except Exception:  # noqa: BLE001
-        return False
+    """Cookie của mirror (file sessions/ hoặc .env) còn dùng được không?"""
+    return cookiestore.alive(mirror)
 
 
 def login_manual(mirrors: list[int], username: str, password: str,
@@ -97,11 +86,11 @@ def login_manual(mirrors: list[int], username: str, password: str,
                     log(f"[portal{m}] HẾT GIỜ (5 phút) — bỏ qua, quay lại sau bằng --mirrors {m}")
                     continue
 
-                SESSIONS.mkdir(exist_ok=True)
-                (SESSIONS / f"portal{m}.json").write_text(json.dumps({
+                SESSIONS_SAVE = {
                     ".ASPXAUTH": got.get(".ASPXAUTH", ""),
                     "ASP.NET_SessionId": got.get("ASP.NET_SessionId", ""),
-                }))
+                }
+                cookiestore.save(m, SESSIONS_SAVE)
                 if session_alive(m):
                     log(f"[portal{m}] ✅ cookie đã lưu + verify OK")
                     done.append(m)

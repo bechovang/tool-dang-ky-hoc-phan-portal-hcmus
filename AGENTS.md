@@ -68,9 +68,10 @@ Copy `dkhp_tool/.env.example` thành `dkhp_tool/.env` rồi điền:
 |---|---|---|---|
 | `login-manual` (browser) | Mặc định, khuyến nghị — nhiều mirror cùng lúc | 0đ | AI chạy lệnh, **con người** tick reCAPTCHA trong cửa sổ Chromium hiện ra. AI KHÔNG tick được hộ — phải mời người dùng nhìn màn hình |
 | `login` (2captcha) | Cần tự động 100%, ví dụ tool tự login lại lúc nửa đêm | ~30đ/lần, nạp $3 ở 2captcha.com | AI tự chạy, mất 15-40 giây. **Thiếu key thì tự đổi sang mở browser login tay** |
+| Dán cookie vào `.env` | Người dùng đã login sẵn trong browser thường, không muốn cài Playwright | 0đ | Hướng dẫn họ: F12 > Application > Cookies > `new-portalN.hcmus.edu.vn`, copy giá trị `.ASPXAUTH` (và `ASP.NET_SessionId`) rồi ghi vào `.env` dạng `PORTAL4_ASPXAUTH=...`, `PORTAL4_SESSIONID=...` — mỗi mirror một cặp. Tool ưu tiên cookie `sessions/*.json` hơn, `.env` chỉ dùng cho mirror chưa có file |
 
 Nếu người dùng không muốn tạo 2captcha: bỏ trống key, mọi thứ vẫn chạy bình
-thường bằng login-manual.
+thường bằng login-manual hoặc cookie dán tay.
 
 ## Sổ tay lệnh (chạy trong `dkhp_tool/`)
 
@@ -78,7 +79,8 @@ thường bằng login-manual.
 |---|---|---|
 | "xem portal nào sống" | `python run.py mirrors` | "thử tiếng 20 cổng web, cái nào nhanh nhất" |
 | "đăng nhập sẵn" | `python run.py login-manual` | "mở browser, anh/chị tick ô reCAPTCHA giúp tôi nhé" |
-| "kiểm tra phiên đăng nhập" | `python run.py sessions` | "xem còn giữ thẻ vào cửa của mấy cổng" |
+| "kiểm tra phiên đăng nhập" | `python run.py sessions` | "xem còn giữ thẻ vào cửa của mấy cổng" (rút từ sessions/*.json hoặc .env) |
+| "tôi có cookie, thêm vào giùm" | ghi `PORTAL{N}_ASPXAUTH=...` vào `.env` rồi chạy `python run.py sessions` | "dán thẻ vào cửa của cổng N vào file cấu hình, kiểm tra ngay xem còn dùng được không" |
 | "xem môn" | `python run.py status` | "liệt kê môn đã đăng + môn đang mở" |
 | "đăng ký hết" | `python run.py register` | ⚠️ hành động thật — đọc danh sách + chờ "đồng ý" |
 | "đăng ký mấy môn X,Y" | `python run.py register --codes X,Y` | như trên nhưng chọn lọc |

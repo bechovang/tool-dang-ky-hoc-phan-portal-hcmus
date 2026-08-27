@@ -25,7 +25,8 @@ Kết quả trong div "divMsg" (text "thành công")
   nhiễu → tool tách từng ký tự bằng connected-component (OpenCV) rồi OCR từng
   ký tự (ddddocr). Sai thì server cho ảnh mới → tự retry.
 - reCAPTCHA login: giải qua **2captcha** (~$3/1000 lần). Không có key thì dùng
-  `python run.py cookie` (paste cookie từ browser — free).
+  `login-manual` (tool mở browser, bạn tick reCAPTCHA) hoặc dán cookie vào `.env`
+  (xem "Dán cookie tay vào .env" bên dưới) — free.
 
 ## Cài đặt
 
@@ -40,10 +41,10 @@ cp .env.example .env    # rồi điền mật khẩu + API key
 | Lệnh | Chức năng |
 |---|---|
 | `python run.py mirrors` | Ping 20 mirror, xếp theo tốc độ |
-| `python run.py login` | Login tự động (2captcha) + lưu cookie |
+| `python run.py login` | Login tự động (2captcha); **thiếu key thì tự mở browser login tay** |
 | `python run.py login-manual` | **Login tay hàng loạt qua browser**: tool mở Chromium, tự điền tài khoản cho từng mirror chưa có cookie — bạn chỉ tick reCAPTCHA + bấm Đăng nhập, tool tự lưu + verify + chuyển mirror kế. `--mirrors 4,11` hoặc `--force` để làm lại |
 | `python run.py cookie` | Paste cookie từ browser (1 mirror, không cần Playwright) |
-| `python run.py sessions` | Kiểm tra cookie đã lưu mirror nào còn sống |
+| `python run.py sessions` | Kiểm tra cookie đã lưu mirror nào còn sống (rút từ `sessions/*.json` hoặc `.env`) |
 | `python run.py status` | Xem môn đã ĐK + môn đang mở |
 | `python run.py register` | **Đăng ký HẾT mọi môn đang mở** |
 | `python run.py register --codes MST10019,MST10020` | Chỉ đăng ký các môn này |
@@ -54,6 +55,25 @@ cp .env.example .env    # rồi điền mật khẩu + API key
 
 Thêm `--mirror N` (1..20) cho mọi lệnh để chỉ định mirror; mặc định tự chọn
 mirror nhanh nhất.
+
+## Dán cookie tay vào .env
+
+Không muốn dùng Playwright? Lấy cookie trực tiếp từ browser đang login sẵn:
+F12 → Application → Cookies → `new-portalN.hcmus.edu.vn`, rồi thêm vào `.env`:
+
+```ini
+PORTAL4_ASPXAUTH=C7C0CCC1...   # giá trị cookie .ASPXAUTH
+PORTAL4_SESSIONID=ykeq...      # giá trị cookie ASP.NET_SessionId (tùy chọn)
+PORTAL11_ASPXAUTH=...          # mỗi mirror một cặp biến riêng
+```
+
+Thứ tự ưu tiên khi tool cần cookie mirror N: `sessions/portal{N}.json` (tool tự
+ghi khi login — luôn mới nhất) **trước**, biến `.env` sau. Xem tool đang rút từ
+đâu: `python run.py sessions` (cột *nguồn*).
+
+⚠ Cookie là **mỗi mirror một cái** — cookie của portal4 không dùng được cho
+portal11 (server mỗi mirror có khóa riêng). Ai đã login mirror nào thì dán đúng
+mirror đó.
 
 ## Kịch bản ngày đăng ký (khuyến nghị)
 
