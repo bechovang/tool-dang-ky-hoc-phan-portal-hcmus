@@ -6,6 +6,7 @@ cookie .ASPXAUTH xuất hiện, lưu + verify, rồi chuyển mirror kế tiếp
 """
 from __future__ import annotations
 
+import random
 import time
 
 import cookiestore
@@ -34,10 +35,16 @@ def session_alive(mirror: int) -> bool:
     return cookiestore.alive(mirror)
 
 
-def open_dkhp(mirror: int, log=print):
+def open_dkhp(mirror: int, username: str = "", password: str = "",
+              pick_fallback=None, log=print):
     """Mở trang ĐKHP của mirror trong Chromium (cookie gắn sẵn) — bạn tự gõ
-    mã 6 số, tự tick môn và bấm đăng ký. Cửa sổ đang mở thì tool liên tục lưu
-    lại cookie mới (phòng khi bạn phải login lại ngay trong cửa sổ)."""
+    mã 6 số, tự tick môn và bấm đăng ký.
+
+    Ngày đông người: tự F5 (~1 giây/lần) tới khi trang lên thật; phiên chết
+    giữa chừng thì tự login lại qua dịch vụ giải captcha rồi mở lại trang;
+    mirror nghẽn đặc (F5 hoài không lên) thì gọi pick_fallback() để dò lại
+    20 mirror từ tầng 0 và chuyển cổng. Cookie được lưu liên tục trong lúc
+    cửa sổ mở."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -50,28 +57,134 @@ def open_dkhp(mirror: int, log=print):
     if not cookies or not cookies.get(".ASPXAUTH"):
         raise SystemExit(f"chưa có cookie cho new-portal{mirror} — chạy trước: "
                          f"python run.py login --mirror {mirror}")
-    base = f"https://new-portal{mirror}.hcmus.edu.vn"
+    cur_m = mirror
+
+    def base_of(m: int) -> str:
+        return f"https://new-portal{m}.hcmus.edu.vn"
+
+    def gate_of(m: int) -> str:
+        return base_of(m) + "/DangKyHocPhan.aspx"
+
+    def inject(m: int):
+        cc = cookiestore.load(m)
+        ctx.add_cookies([{"name": k, "value": v, "domain": base_of(m)[8:], "path": "/"}
+                         for k, v in cc.items()])
+
+    def relogin(m: int) -> bool:
+        """Login lại ngoài browser (httpx + dịch vụ giải captcha, ~33đ/lần)."""
+        import captchasvc
+        import portal as P
+        svc, _key = captchasvc.active()
+        if not (username and password and svc):
+            return False
+        try:
+            s = P.PortalSession(m, log=log)
+            s.login(username, password)
+            cookiestore.save(m, s.cookie_dict())
+            return True
+        except Exception as e:  # noqa: BLE001
+            log(f"[portal{m}] login lại thất bại ({e})")
+            return False
+
+    def switch_mirror() -> bool:
+        """Cổng hiện tại nghẽn đặc — dò lại từ tầng 0, chuyển cổng nếu được."""
+        nonlocal cur_m
+        if not pick_fallback:
+            return False
+        nxt = pick_fallback({cur_m})
+        if not nxt or nxt == cur_m:
+            return False
+        log(f"[portal{cur_m}] nghẽn quá — CHUYỂN CỔNG sang new-portal{nxt}")
+        cur_m = nxt
+        ctx.clear_cookies()
+        inject(cur_m)
+        return True
+
+    def page_broken(html: str) -> bool:
+        """Trang lỗi/nghẽn: rỗng, ngắn bất thường, hoặc error page của server."""
+        h = html[:4000].lower()
+        return (len(html) < 500 or "service unavailable" in h
+                or "bad gateway" in h or "gateway timeout" in h
+                or "runtime error" in h)
+
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=False)
         ctx = browser.new_context()
-        ctx.add_cookies([{"name": k, "value": v, "domain": base[8:], "path": "/"}
-                         for k, v in cookies.items()])
+        inject(cur_m)
         page = ctx.new_page()
         try:
-            page.goto(base + "/DangKyHocPhan.aspx", timeout=30000)
-        except Exception as e:  # noqa: BLE001
-            log(f"[portal{mirror}] trang tải chậm ({type(e).__name__}) — tự F5 trong cửa sổ nhé")
-        log(f"[portal{mirror}] cửa sổ đã mở — bạn gõ mã 6 số và tự thao tác, "
-            f"đóng cửa sổ khi xong (cookie tự lưu lại).")
-        last = ""
-        try:
+            # ---- phase 1: đánh tới khi trang ĐKHP lên thật (tự F5 ~1s/lần) ----
+            attempt, up, fail_streak = 0, False, 0
+            while browser.is_connected() and not up:
+                attempt += 1
+                try:
+                    page.goto(gate_of(cur_m), timeout=15000)
+                except Exception:  # noqa: BLE001 — nghẽn/timeout: vòng sau đánh lại
+                    pass
+                try:
+                    url, html = page.url, page.content()
+                except Exception:  # noqa: BLE001
+                    time.sleep(1)
+                    continue
+                if "/Login.aspx" in url:
+                    fail_streak = 0
+                    log(f"[portal{cur_m}] [{attempt}] phiên chết — login lại...")
+                    if relogin(cur_m):
+                        ctx.clear_cookies()
+                        inject(cur_m)
+                    else:
+                        log(f"[portal{cur_m}] tự login không được — bạn login tay "
+                            f"trong cửa sổ, tool tự phát hiện và chuyển tiếp")
+                        deadline = time.time() + 600
+                        while browser.is_connected() and time.time() < deadline:
+                            if any(c["name"] == ".ASPXAUTH"
+                                   for c in ctx.cookies(base_of(cur_m))):
+                                cookiestore.save(cur_m, {c["name"]: c["value"]
+                                                         for c in ctx.cookies(base_of(cur_m))})
+                                break
+                            page.wait_for_timeout(1000)
+                elif not page_broken(html):
+                    up = True
+                    log(f"[portal{cur_m}] [{attempt}] TRANG LÊN RỒI — gõ mã 6 số "
+                        f"và thao tác nhé. Đóng cửa sổ khi xong.")
+                else:
+                    fail_streak += 1
+                    if fail_streak >= 12:  # ~15-25 giây không lên: cổng nghẽn đặc
+                        if switch_mirror():
+                            fail_streak = 0
+                            continue
+                        fail_streak = 0  # hết cổng tốt hơn — ở lại F5 tiếp
+                    if attempt % 10 == 1:
+                        log(f"[portal{cur_m}] [{attempt}] server chưa lên — tự F5 tiếp...")
+                    page.wait_for_timeout(1000 + random.randint(0, 400))
+            # ---- phase 2: canh cửa sổ — lưu cookie + tự cứu khi bị đá về login ----
+            last, warned = "", False
+            need_nav = False
+            last_relogin = 0.0
             while browser.is_connected():
                 try:
-                    cur = {c["name"]: c["value"] for c in ctx.cookies(base)}
+                    cur = {c["name"]: c["value"] for c in ctx.cookies(base_of(cur_m))}
                     if cur.get(".ASPXAUTH") and cur != last:
-                        cookiestore.save(mirror, cur)
+                        cookiestore.save(cur_m, cur)
                         last = cur
-                    page.wait_for_timeout(2000)
+                    if "/Login.aspx" in page.url:
+                        if need_nav:  # đã login lại — chỉ cần mở lại trang (free)
+                            try:
+                                page.goto(gate_of(cur_m), timeout=20000)
+                                need_nav = False
+                            except Exception:  # noqa: BLE001
+                                pass  # nghẽn: vòng sau thử lại, không tốn tiền
+                        elif time.time() - last_relogin > 30:
+                            last_relogin = time.time()
+                            if relogin(cur_m):
+                                ctx.clear_cookies()
+                                inject(cur_m)
+                                need_nav = True
+                            elif not warned:
+                                warned = True
+                                log(f"[portal{cur_m}] phiên chết và không tự login "
+                                    f"được — bạn login tay trong cửa sổ nhé")
+                    page.wait_for_timeout(1500)
                 except Exception:  # noqa: BLE001 — cửa sổ vừa bị đóng giữa chừng
                     break
         except KeyboardInterrupt:
@@ -81,7 +194,7 @@ def open_dkhp(mirror: int, log=print):
                 browser.close()
             except Exception:  # noqa: BLE001
                 pass
-    log(f"[portal{mirror}] cửa sổ đã đóng — cookie mới nhất đã lưu.")
+    log(f"[portal{cur_m}] cửa sổ đã đóng — cookie mới nhất đã lưu.")
 
 
 def login_manual(mirrors: list[int], username: str, password: str,

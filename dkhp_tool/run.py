@@ -12,7 +12,9 @@ Commands:
   python run.py sessions                trạng thái cookie đã lưu (sống/chết)
   python run.py status [--mirror N]     show registered + open classes
   python run.py open [--mirror N]       mở sẵn trang ĐKHP trên mirror nhanh nhất
-                                       có cookie sống — bạn tự gõ mã 6 số, tự bấm
+                                       có cookie sống — tự F5 khi nghẽn, phiên chết
+                                       tự login lại, cổng nghẽn đặc thì tự chuyển
+                                       cổng; bạn chỉ việc gõ 6 số + bấm
   python run.py register [--codes A,B] [--dry-run]   register ALL open classes (or subset)
   python run.py cancel --codes A,B      cancel registrations
   python run.py race [--codes A,B]      loop until classes open, register instantly
@@ -249,21 +251,48 @@ def _ensure_mirror_cookie(m: int):
         browser_login.login_manual([m], USERNAME, PASSWORD, log=log)
 
 
+def _pick_open_mirror(exclude: set[int]) -> int:
+    """Tầng 0 cho `open`: dò 20 mirror, trả về mirror nhanh nhất có cookie sống
+    (trừ mấy mirror trong exclude); không có thì tự login trên mirror nhanh nhất
+    (tốn ~33đ nếu qua dịch vụ). Trả về 0 = không chọn được."""
+    skip = f" (trừ {sorted(exclude)})" if exclude else ""
+    log(f"dò lại 20 mirror{skip}...")
+    ups = [i for i, _ in P.check_mirrors(range(1, 21)) if i not in exclude]
+    if not ups:
+        log("không mirror nào khác phản hồi")
+        return 0
+    for i in ups:
+        if cookiestore.alive(i):
+            log(f"chọn new-portal{i} (cookie sống sẵn)")
+            return i
+    try:
+        _ensure_mirror_cookie(ups[0])
+        return ups[0]
+    except Exception as e:  # noqa: BLE001
+        log(f"login trên new-portal{ups[0]} thất bại ({e})")
+        return 0
+
+
 def cmd_open(a):
-    """Mở trang ĐKHP trong browser để tự thao tác tay — tool chỉ lo chọn mirror
-    nhanh nhất có cookie sống."""
+    """Mở trang ĐKHP trong browser để tự thao tác tay — tool lo chọn mirror
+    nhanh nhất có cookie sống; cổng nghẽn đặc thì tự dò lại từ đầu và chuyển."""
     import browser_login
+
+    def fallback(exclude: set[int]) -> int:
+        try:
+            return _pick_open_mirror(exclude)
+        except Exception as e:  # noqa: BLE001
+            log(f"dò lại thất bại ({e})")
+            return 0
+
     if a.mirror:
         _ensure_mirror_cookie(a.mirror)
         m = a.mirror
     else:
-        log("dò 20 mirror...")
-        ups = P.check_mirrors(range(1, 21))
-        if not ups:
+        m = fallback(set())
+        if not m:
             raise SystemExit("no mirror responded — try again in a moment")
-        m = next((i for i, _ in ups if cookiestore.alive(i)), ups[0][0])
-        _ensure_mirror_cookie(m)
-    browser_login.open_dkhp(m, log=log)
+    browser_login.open_dkhp(m, USERNAME, PASSWORD, fallback, log=log)
 
 
 def cmd_status(a):

@@ -49,7 +49,7 @@ cp .env.example .env    # rồi điền mật khẩu + API key
 | `python run.py cookie` | Paste cookie từ browser (1 mirror, không cần Playwright) |
 | `python run.py sessions` | Kiểm tra cookie đã lưu mirror nào còn sống (rút từ `sessions/*.json` hoặc `.env`) |
 | `python run.py status` | Xem môn đã ĐK + môn đang mở |
-| `python run.py open` | **Mở sẵn trang ĐKHP trên mirror nhanh nhất có cookie sống** (dò 20 mirror; thiếu cookie thì tự login trước) — cửa sổ browser hiện sẵn ô gõ mã 6 số, bạn tự gõ và tự bấm đăng ký. Đóng cửa sổ khi xong, cookie mới nhất tự lưu lại |
+| `python run.py open` | **Mở sẵn trang ĐKHP trên mirror nhanh nhất có cookie sống** (dò 20 mirror; thiếu cookie thì tự login trước) — cửa sổ browser hiện sẵn ô gõ mã 6 số, bạn tự gõ và tự bấm đăng ký. **Ngày đông người:** trang không lên thì tool tự F5 (~1s/lần) tới khi lên thật; phiên chết giữa chừng thì tự login lại (~33đ) rồi mở lại trang; F5 một cổng ~12 lần không lên thì **tự dò lại 20 cổng và chuyển cổng** (ưu tiên cổng có cookie sẵn — đã chạy `login --all` thì chuyển cổng miễn phí). Đóng cửa sổ khi xong, cookie mới nhất tự lưu lại |
 | `python run.py register` | **Đăng ký HẾT mọi môn đang mở** |
 | `python run.py register --codes MST10019,MST10020` | Chỉ đăng ký các môn này |
 | `python run.py register --dry-run` | Xem nó sẽ tick gì, không submit |
