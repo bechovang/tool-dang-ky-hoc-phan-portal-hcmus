@@ -153,11 +153,14 @@ def cmd_sessions(_a):
 
 def cmd_login(a):
     m = a.mirror or pick_mirror()
+    if not API_KEY:
+        log("chưa có TWOCAPTCHA_API_KEY trong .env — mở browser cho bạn login tay (miễn phí)...")
+        log("(muốn tự động 100% thì nạp key 2captcha; muốn login nhiều mirror cùng lúc: python run.py login-manual)")
+        import browser_login
+        browser_login.login_manual([m], USERNAME, PASSWORD, log=log)
+        return
     if not (USERNAME and PASSWORD):
         raise SystemExit("Set USERNAME_SV / PASSWORD_SV in .env first.")
-    if not API_KEY:
-        raise SystemExit("Auto-login needs TWOCAPTCHA_API_KEY in .env "
-                         "(or use `python run.py cookie` to paste browser cookies).")
     s = PortalSession(m, log=log)
     s.login(USERNAME, PASSWORD, API_KEY)
     save_session(s)

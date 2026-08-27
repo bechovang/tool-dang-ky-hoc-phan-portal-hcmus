@@ -66,8 +66,8 @@ Copy `dkhp_tool/.env.example` thành `dkhp_tool/.env` rồi điền:
 
 | Cách | Khi nào | Chi phí | AI làm gì |
 |---|---|---|---|
-| `login-manual` (browser) | Mặc định, khuyến nghị | 0đ | AI chạy lệnh, **con người** tick reCAPTCHA trong cửa sổ Chromium hiện ra. AI KHÔNG tick được hộ — phải mời người dùng nhìn màn hình |
-| `login` (2captcha) | Cần tự động 100%, ví dụ tool tự login lại lúc nửa đêm | ~30đ/lần, nạp $3 ở 2captcha.com | AI tự chạy, mất 15-40 giây |
+| `login-manual` (browser) | Mặc định, khuyến nghị — nhiều mirror cùng lúc | 0đ | AI chạy lệnh, **con người** tick reCAPTCHA trong cửa sổ Chromium hiện ra. AI KHÔNG tick được hộ — phải mời người dùng nhìn màn hình |
+| `login` (2captcha) | Cần tự động 100%, ví dụ tool tự login lại lúc nửa đêm | ~30đ/lần, nạp $3 ở 2captcha.com | AI tự chạy, mất 15-40 giây. **Thiếu key thì tự đổi sang mở browser login tay** |
 
 Nếu người dùng không muốn tạo 2captcha: bỏ trống key, mọi thứ vẫn chạy bình
 thường bằng login-manual.
