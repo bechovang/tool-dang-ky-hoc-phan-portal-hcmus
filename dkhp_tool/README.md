@@ -44,6 +44,7 @@ cp .env.example .env    # rồi điền mật khẩu + API key
 |---|---|
 | `python run.py mirrors` | Ping 20 mirror, xếp theo tốc độ |
 | `python run.py login` | Login tự động qua anticaptcha.top (VN) hoặc 2captcha — key nào có trong `.env` thì dùng cái đó; **thiếu cả hai thì tự mở browser login tay** |
+| `python run.py login --all` | Login tự động một lượt cho **hết mọi mirror đang sống** (kho cookie dự phòng cho race). Mirror đã có cookie sống được bỏ qua — chạy lại bao nhiêu lần cũng chỉ tốn cho cái chết; `--force` làm lại tất cả (~33đ × số mirror phải login) |
 | `python run.py login-manual` | **Login tay hàng loạt qua browser**: tool mở Chromium, tự điền tài khoản cho từng mirror chưa có cookie — bạn chỉ tick reCAPTCHA + bấm Đăng nhập, tool tự lưu + verify + chuyển mirror kế. `--mirrors 4,11` hoặc `--force` để làm lại |
 | `python run.py cookie` | Paste cookie từ browser (1 mirror, không cần Playwright) |
 | `python run.py sessions` | Kiểm tra cookie đã lưu mirror nào còn sống (rút từ `sessions/*.json` hoặc `.env`) |
@@ -77,12 +78,27 @@ ghi khi login — luôn mới nhất) **trước**, biến `.env` sau. Xem tool 
 portal11 (server mỗi mirror có khóa riêng). Ai đã login mirror nào thì dán đúng
 mirror đó.
 
+## Cookie sống bao lâu?
+
+Thời hạn do **server** quyết định khi phát hành cookie (mặc định ASP.NET thường
+20–30 phút dạng *sliding* — mỗi lượt dùng lại được tính giờ mới), ngoài ra server
+có thể hủy sớm (đăng xuất, khởi động lại). Nói cách khác: **không có con số cố
+định chắc chắn**, đừng để cookie nằm quá lâu trước giờ chạy.
+
+- Ngay khi login xong, tool in hạn ghi trong cookie: `.ASPXAUTH hết hạn lúc ...`
+  — đó là trần trên cùng, thực tế có thể chết sớm hơn.
+- Kiểm tra thật (miễn phí, 1 request/mirror) bất cứ lúc nào:
+  `python run.py sessions` → hiện SỐNG/CHẾT từng mirror.
+- Chết mấy cái thì chạy lại `python run.py login --all` — nó chỉ login lại đúng
+  mấy cái chết, không tốn tiền cho cái còn sống.
+
 ## Kịch bản ngày đăng ký (khuyến nghị)
 
 1. **Trước giờ mở** (~10-15 phút):
    ```bash
    python run.py mirrors                     # xem mirror nào nhanh
-   python run.py login-manual                # login tay 1 lần cho mọi mirror còn thiếu
+   python run.py login --all                 # login tự động mọi mirror còn thiếu (~33đ/cái)
+   #  (không muốn tốn tiền: python run.py login-manual — tick reCAPTCHA tay)
    python run.py sessions                    # xác nhận mấy mirror đã có cookie sống
    ```
    Tool sẽ bỏ qua mirror đã có cookie còn sống — chạy bao nhiêu lần cũng không

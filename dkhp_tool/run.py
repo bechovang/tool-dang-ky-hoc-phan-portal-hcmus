@@ -3,6 +3,8 @@
 Commands:
   python run.py mirrors                 check which of the 20 mirrors are up
   python run.py login [--mirror N]      auto-login (anticaptcha.top / 2captcha), save cookies
+  python run.py login --all [--force]   auto-login TẤT CẢ mirror đang sống (lưu kho cookie
+                                       dự phòng cho race; bỏ qua mirror đã có cookie sống)
   python run.py login-manual            login tay qua browser cho mọi mirror
                                        [--mirrors 4,11|1-20] [--force]
   python run.py cookie [--mirror N]     paste cookies from your browser instead
@@ -63,6 +65,11 @@ def load_session(mirror: int = 0) -> PortalSession:
 def save_session(s: PortalSession):
     cookiestore.save(s.mirror, s.cookie_dict())
     log(f"cookies saved for new-portal{s.mirror}")
+    for c in s.client.cookies.jar:
+        if c.name == ".ASPXAUTH" and c.expires:
+            log(f"  (.ASPXAUTH hết hạn lúc: "
+                f"{time.strftime('%H:%M:%S %d/%m/%Y', time.localtime(c.expires))})")
+            break
 
 
 def ensure_ready(s: PortalSession) -> str:
@@ -141,7 +148,61 @@ def cmd_sessions(_a):
                 f"— login lại: python run.py login-manual --mirrors {m} --force")
 
 
+def login_all(force: bool = False):
+    """Login tự động trên TẤT CẢ mirror đang sống — tạo kho cookie dự phòng cho race.
+    Mirror đã có cookie còn sống thì bỏ qua (tiết kiệm tiền) trừ khi --force."""
+    svc, key = captchasvc.active()
+    if not (USERNAME and PASSWORD):
+        raise SystemExit("Set USERNAME_SV / PASSWORD_SV in .env first.")
+    if not svc:
+        raise SystemExit("Cần key giải reCAPTCHA trong .env (ANTICAPTCHA_API_KEY của "
+                         "anticaptcha.top hoặc TWOCAPTCHA_API_KEY). Không có key: "
+                         "python run.py login-manual")
+    bal = None
+    if svc == "anticaptcha.top":
+        bal = solver_anticaptcha.get_balance(key)
+        log(f"số dư anticaptcha.top: {bal}đ")
+    log("dò 20 mirror...")
+    ups = P.check_mirrors(range(1, 21))
+    if not ups:
+        raise SystemExit("no mirror responded — try again in a moment")
+    if len(ups) < 20:
+        log(f"{len(ups)}/20 mirror đang phản hồi (còn lại đang nghẽn/chết — bỏ qua)")
+    todo = [i for i, _ in ups if force or not cookiestore.alive(i)]
+    skipped = [i for i, _ in ups if i not in todo]
+    if skipped:
+        log(f"bỏ qua {len(skipped)} mirror đã có cookie sống: "
+            f"{','.join(map(str, skipped))} (dùng --force để làm lại)")
+    if not todo:
+        log("mọi mirror đang sống đều có cookie rồi — không cần login thêm.")
+        return
+    log(f"login lần lượt {len(todo)} mirror (~30-40 giây mỗi cái): "
+        f"{','.join(map(str, todo))}")
+    if bal is not None and bal < 33 * len(todo):
+        log(f"⚠ số dư {bal}đ có thể không đủ (~{33 * len(todo)}đ cho {len(todo)} mirror)")
+    ok, failed = [], []
+    for i in todo:
+        try:
+            s = PortalSession(i, log=log)
+            s.login(USERNAME, PASSWORD)
+            save_session(s)
+            ok.append(i)
+        except Exception as e:  # noqa: BLE001
+            log(f"new-portal{i}: LOGIN THẤT BẠI ({e})")
+            failed.append(i)
+        time.sleep(1)
+    log(f"--- login-all xong: {len(ok)} OK, {len(failed)} thất bại "
+        f"(trên {len(ups)} mirror sống) ---")
+    if failed:
+        log(f"thất bại: {','.join(map(str, failed))} — chạy lại lệnh này (chỉ làm lại "
+            f"cái hỏng), hoặc login tay: python run.py login-manual --mirrors "
+            f"{','.join(map(str, failed))}")
+
+
 def cmd_login(a):
+    if a.all:
+        login_all(force=a.force)
+        return
     m = a.mirror or pick_mirror()
     svc, key = captchasvc.active()
     if not svc:
@@ -273,7 +334,11 @@ def main():
         return sp
 
     with_mirror(sub.add_parser("mirrors"))
-    with_mirror(sub.add_parser("login"))
+    sp = with_mirror(sub.add_parser("login"))
+    sp.add_argument("--all", action="store_true",
+                    help="login TẤT CẢ mirror đang sống — lưu cookie dự phòng cho race")
+    sp.add_argument("--force", action="store_true",
+                    help="(kèm --all) làm lại kể cả mirror đã có cookie còn sống")
     with_mirror(sub.add_parser("cookie"))
     with_mirror(sub.add_parser("status"))
 

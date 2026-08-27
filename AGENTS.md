@@ -83,6 +83,7 @@ thường bằng login-manual hoặc cookie dán tay.
 | "xem portal nào sống" | `python run.py mirrors` | "thử tiếng 20 cổng web, cái nào nhanh nhất" |
 | "đăng nhập sẵn" | `python run.py login-manual` | "mở browser, anh/chị tick ô reCAPTCHA giúp tôi nhé" |
 | "đăng nhập tự động" | `python run.py login` | cần `ANTICAPTCHA_API_KEY` trong .env — tool tự giải reCAPTCHA (~33đ/lần), tự báo số dư |
+| "đăng nhập sẵn tất cả cổng" | `python run.py login --all` | login tự động lần lượt mọi mirror đang sống (~33đ × số mirror còn thiếu — cái đã có cookie sống thì bỏ qua). `--force` làm lại hết. Sau lệnh này tool in hạn của từng cookie |
 | "kiểm tra phiên đăng nhập" | `python run.py sessions` | "xem còn giữ thẻ vào cửa của mấy cổng" (rút từ sessions/*.json hoặc .env) |
 | "tôi có cookie, thêm vào giùm" | ghi `PORTAL{N}_ASPXAUTH=...` vào `.env` rồi chạy `python run.py sessions` | "dán thẻ vào cửa của cổng N vào file cấu hình, kiểm tra ngay xem còn dùng được không" |
 | "xem môn" | `python run.py status` | "liệt kê môn đã đăng + môn đang mở" |
@@ -94,7 +95,8 @@ thường bằng login-manual hoặc cookie dán tay.
 
 Quy trình ngày đăng ký chuẩn (hướng dẫn người dùng theo đúng thứ tự):
 
-1. Trước 10-15 phút: `mirrors` → `login-manual` (login sẵn 3-5 mirror nhanh nhất) → `sessions`
+1. Trước 10-15 phút: `mirrors` → `login --all` (tự động, ~33đ/mirror) hoặc
+   `login-manual` (tick reCAPTCHA tay, miễn phí) → `sessions`
 2. Đúng giờ: `race` (hoặc `race --codes ...` nếu chỉ cần vài môn)
 3. Xong: `status` để xác nhận kết quả
 
@@ -103,7 +105,7 @@ Quy trình ngày đăng ký chuẩn (hướng dẫn người dùng theo đúng t
 | Triệu chứng | Nguyên nhân & cách xử lý |
 |---|---|
 | `NO mirror responded` | Mạng/chặn DNS. Đợi 1-2 phút chạy lại `mirrors`. Đúng giờ mở đăng ký portal hay nghẽn — bình thường |
-| `auth lost` / bị đá về Login | Cookie hết hạn. Chạy `login-manual --force` hoặc `login` (nếu có 2captcha) |
+| `auth lost` / bị đá về Login | Cookie hết hạn. Chạy `login --all` (tự động mọi mirror còn thiếu, tốn phí) hoặc `login-manual --force` (tick tay, miễn phí). Cookie không có hạn cố định chắc chắn — kiểm tra bằng `sessions` |
 | `Captcha không đúng` lặp lại nhiều lần | OCR hụt ảnh — tool tự thử lại. Nếu kẹt >2 phút: chạy `login-manual` lấy session mới |
 | `UnicodeEncodeError` | Thiết lập `PYTHONIOENCODING=utf-8` như mục Cài đặt |
 | `playwright` lỗi/not installed | `pip install playwright` + `python -m playwright install chromium` |
