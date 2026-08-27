@@ -30,7 +30,8 @@ Kết quả trong div "divMsg" (text "thành công")
 ## Cài đặt
 
 ```bash
-pip install httpx beautifulsoup4 ddddocr opencv-python-headless python-dotenv numpy pillow
+pip install httpx beautifulsoup4 ddddocr opencv-python-headless python-dotenv numpy pillow playwright
+python -m playwright install chromium
 cp .env.example .env    # rồi điền mật khẩu + API key
 ```
 
@@ -40,7 +41,9 @@ cp .env.example .env    # rồi điền mật khẩu + API key
 |---|---|
 | `python run.py mirrors` | Ping 20 mirror, xếp theo tốc độ |
 | `python run.py login` | Login tự động (2captcha) + lưu cookie |
-| `python run.py cookie` | Paste cookie từ browser (không tốn tiền) |
+| `python run.py login-manual` | **Login tay hàng loạt qua browser**: tool mở Chromium, tự điền tài khoản cho từng mirror chưa có cookie — bạn chỉ tick reCAPTCHA + bấm Đăng nhập, tool tự lưu + verify + chuyển mirror kế. `--mirrors 4,11` hoặc `--force` để làm lại |
+| `python run.py cookie` | Paste cookie từ browser (1 mirror, không cần Playwright) |
+| `python run.py sessions` | Kiểm tra cookie đã lưu mirror nào còn sống |
 | `python run.py status` | Xem môn đã ĐK + môn đang mở |
 | `python run.py register` | **Đăng ký HẾT mọi môn đang mở** |
 | `python run.py register --codes MST10019,MST10020` | Chỉ đăng ký các môn này |
@@ -54,11 +57,17 @@ mirror nhanh nhất.
 
 ## Kịch bản ngày đăng ký (khuyến nghị)
 
-1. **Trước giờ mở** (~10 phút): `python run.py login` trên 1-2 mirror nhanh
-   (cookie mirror nào chỉ dùng được mirror đó — chạy thêm `login --mirror M`
-   lần thứ 2 với mirror khác để có phương án dự phòng).
-2. **Đúng giờ**: `python run.py race` — nó tự refresh, vượt captcha, và submit
-   ngay khi danh sách môn xuất hiện. Mirror chết → tự switch + re-login.
+1. **Trước giờ mở** (~10-15 phút):
+   ```bash
+   python run.py mirrors                     # xem mirror nào nhanh
+   python run.py login-manual                # login tay 1 lần cho mọi mirror còn thiếu
+   python run.py sessions                    # xác nhận mấy mirror đã có cookie sống
+   ```
+   Tool sẽ bỏ qua mirror đã có cookie còn sống — chạy bao nhiêu lần cũng không
+   phải login lại cái cũ.
+2. **Đúng giờ**: `python run.py race` — tự refresh, vượt captcha, submit ngay
+   khi môn xuất hiện. Mirror chết → **chuyển sang mirror có cookie dự phòng
+   trước** (miễn phí), chỉ khi hết cookie dự phòng mới tốn 2captcha login lại.
 3. Xem kết quả: `python run.py status`.
 
 ## Lưu ý quan trọng

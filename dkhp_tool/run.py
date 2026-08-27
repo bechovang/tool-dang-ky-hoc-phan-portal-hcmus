@@ -3,7 +3,10 @@
 Commands:
   python run.py mirrors                 check which of the 20 mirrors are up
   python run.py login [--mirror N]      auto-login via 2captcha, save cookies
+  python run.py login-manual            login tay qua browser cho mọi mirror
+                                       [--mirrors 4,11|1-20] [--force]
   python run.py cookie [--mirror N]     paste cookies from your browser instead
+  python run.py sessions                trạng thái cookie đã lưu (sống/chết)
   python run.py status [--mirror N]     show registered + open classes
   python run.py register [--codes A,B] [--dry-run]   register ALL open classes (or subset)
   python run.py cancel --codes A,B      cancel registrations
@@ -96,6 +99,26 @@ def _print_rows(rows, title: str):
             f"{r['tc']:>2s}TC  ĐK {r['enrolled']:>4s}/{r['capacity']:<5s} [{r['ctl']}] {r['table']}")
 
 
+def next_alive_session(exclude: set[int]) -> PortalSession | None:
+    """Mirror dự phòng có cookie còn sống (đã login trước đó)."""
+    import browser_login
+    if not SESSIONS.exists():
+        return None
+    for f in sorted(SESSIONS.glob("portal*.json")):
+        try:
+            m = int(f.stem.replace("portal", ""))
+        except ValueError:
+            continue
+        if m in exclude or not browser_login.session_alive(m):
+            continue
+        log(f"chuyển sang mirror dự phòng new-portal{m} (cookie sẵn)")
+        return PortalSession(m, cookies=json.loads(f.read_text()), log=log)
+    return None
+
+
+# ---------------------------------------------------------------- commands
+
+
 # ---------------------------------------------------------------- commands
 def cmd_mirrors(_a):
     ups = P.check_mirrors(range(1, 21))
@@ -105,6 +128,27 @@ def cmd_mirrors(_a):
     for i, dt in ups:
         log(f"new-portal{i:2d}: {dt:6.0f} ms")
     log(f"=> fastest: new-portal{ups[0][0]}")
+
+
+def cmd_login_manual(a):
+    import browser_login
+    mirrors = browser_login.parse_mirror_list(a.mirrors)
+    if not (USERNAME and PASSWORD):
+        raise SystemExit("Set USERNAME_SV / PASSWORD_SV in .env first.")
+    browser_login.login_manual(mirrors, USERNAME, PASSWORD, force=a.force, log=log)
+
+
+def cmd_sessions(_a):
+    import browser_login
+    if not SESSIONS.exists() or not list(SESSIONS.glob("portal*.json")):
+        log("chưa có cookie nào. Chạy: python run.py login-manual")
+        return
+    log("kiểm tra cookie đã lưu (gọi 1 request mỗi mirror)...")
+    for f in sorted(SESSIONS.glob("portal*.json"),
+                    key=lambda p: int(p.stem.replace("portal", ""))):
+        m = int(f.stem.replace("portal", ""))
+        alive = browser_login.session_alive(m)
+        log(f"  new-portal{m:2d}: {'SỐNG ✅' if alive else 'CHẾT ❌ (login lại: python run.py login-manual --mirrors %d --force)' % m}")
 
 
 def cmd_login(a):
@@ -179,7 +223,7 @@ def cmd_race(a):
     codes = [c.strip().upper() for c in a.codes.split(",") if c.strip()] or None
     mirror = a.mirror or pick_mirror()
     s = load_session(mirror)
-    log(f"RACE MODE on new-portal{mirror}: "
+    log(f"RACE MODE on new-portal{s.mirror}: "
         + ("register ALL open classes" if not codes else f"targeting {codes}"))
     attempt = 0
     while True:
@@ -204,16 +248,23 @@ def cmd_race(a):
                 log("already registered — done")
                 return
             time.sleep(POLL)
-        except P.LoginFailed as e:
-            log(f"auth problem ({e}) — retrying")
+        except (P.LoginFailed, httpx.HTTPError, P.GateFailed) as e:
+            log(f"mirror trouble ({type(e).__name__}: {e}) — tìm mirror dự phòng...")
             time.sleep(2)
-        except (httpx.HTTPError, P.GateFailed) as e:
-            log(f"mirror trouble ({type(e).__name__}: {e}) — switching mirror")
-            time.sleep(2)
-            try:
-                s = load_session(pick_mirror())
-            except SystemExit:
-                time.sleep(5)
+            s = next_alive_session(exclude={s.mirror})
+            if s:
+                continue
+            if USERNAME and PASSWORD and API_KEY:
+                try:
+                    log("không có cookie dự phòng — login lại qua 2captcha...")
+                    m = pick_mirror()
+                    s = PortalSession(m, log=log)
+                    s.login(USERNAME, PASSWORD, API_KEY)
+                    save_session(s)
+                    continue
+                except Exception as e2:  # noqa: BLE001
+                    log(f"login lại thất bại ({e2})")
+            time.sleep(10)
 
 
 def main():
@@ -229,6 +280,12 @@ def main():
     with_mirror(sub.add_parser("cookie"))
     with_mirror(sub.add_parser("status"))
 
+    sp = with_mirror(sub.add_parser("login-manual"))
+    sp.add_argument("--mirrors", default="", help="vd: 4,11 hoặc 1-20; rỗng = tất cả 1..20")
+    sp.add_argument("--force", action="store_true", help="login lại kể cả mirror đã có cookie")
+
+    sub.add_parser("sessions")
+
     sp = with_mirror(sub.add_parser("register"))
     sp.add_argument("--codes", default="", help="comma-separated course codes; empty = ALL open")
     sp.add_argument("--dry-run", action="store_true")
@@ -241,6 +298,7 @@ def main():
 
     args = p.parse_args()
     dict(mirrors=cmd_mirrors, login=cmd_login, cookie=cmd_cookie, status=cmd_status,
+         login_manual=cmd_login_manual, sessions=cmd_sessions,
          register=cmd_register, cancel=cmd_cancel, race=cmd_race)[args.cmd](args)
 
 
