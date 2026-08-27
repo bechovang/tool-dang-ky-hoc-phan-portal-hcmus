@@ -117,6 +117,8 @@ class PortalSession:
         """Ensure we are past the 6-digit captcha gate; return the course page HTML."""
         for i in range(1, max_tries + 1):
             r = self._get("/DangKyHocPhan.aspx")
+            if "/Login.aspx" in str(r.url):  # bị redirect về login => cookie chết
+                raise LoginFailed("auth lost — re-login needed")
             if "btnLogin" in r.text[-4000:] and not self.authed():
                 raise LoginFailed("auth lost — re-login needed")
             if "txtCaptcha" not in r.text or "btnVaoDKHP" not in r.text:
